@@ -4,11 +4,25 @@ import LandingPage from '@/components/LandingPage';
 import AuthScreen from '@/components/AuthScreen';
 import Onboarding from '@/components/Onboarding';
 import AppShell from '@/components/AppShell';
+import { isSupabaseConfigured } from './supabase';
 
 function AppContent() {
   const { session, profile, workspace, loading } = useAuth();
   const [showAuth, setShowAuth] = useState(false);
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signup');
+
+  if (showAuth) {
+    return <AuthScreen mode={authMode} />;
+  }
+
+  if (!isSupabaseConfigured) {
+    return (
+      <LandingPage
+        onGetStarted={() => { setAuthMode('signup'); setShowAuth(true); }}
+        onSignIn={() => { setAuthMode('signin'); setShowAuth(true); }}
+      />
+    );
+  }
 
   if (loading) {
     return (
@@ -23,9 +37,6 @@ function AppContent() {
   }
 
   if (!session) {
-    if (showAuth) {
-      return <AuthScreen mode={authMode} />;
-    }
     return (
       <LandingPage
         onGetStarted={() => { setAuthMode('signup'); setShowAuth(true); }}
