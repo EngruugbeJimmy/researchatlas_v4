@@ -83,7 +83,7 @@ export default function LandingPage({ onGetStarted, onSignIn }: { onGetStarted: 
         <section className="hero section-wrap">
           <div className="hero-copy">
             <p className="eyebrow">Research lifecycle platform</p>
-            <h1>From idea to<br /><em>publication.</em></h1>
+            <h1>From idea to<br /><span className="rainbow-text">publication</span></h1>
             <p className="hero-text">ResearchAtlas helps researchers and universities manage the entire research lifecycle, from project creation and supervision to manuscript development, journal matching, submission and publication.</p>
             <div className="hero-actions">
               <button className="button button-solid" onClick={onGetStarted}>Get started free <ArrowRight size={16} /></button>
