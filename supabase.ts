@@ -14,8 +14,9 @@ const supabaseAnonKey = configuredSupabaseAnonKey || 'demo-anon-key';
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    persistSession: true,
-    autoRefreshToken: true,
+    persistSession: false,
+    autoRefreshToken: false,
     detectSessionInUrl: true,
+    storage: globalThis.sessionStorage,
   },
 });

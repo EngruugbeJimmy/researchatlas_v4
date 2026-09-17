@@ -211,6 +211,60 @@ BEGIN
 END; $$;
 GRANT EXECUTE ON FUNCTION request_institution_setup(text,text,text,text) TO authenticated;
 
+CREATE OR REPLACE FUNCTION approve_institution_setup(p_request_id uuid)
+RETURNS institutions LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
+DECLARE r institution_setup_requests;
+        new_institution institutions;
+        new_workspace workspaces;
+BEGIN
+  SELECT * INTO r FROM institution_setup_requests WHERE id = p_request_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Institution setup request not found'; END IF;
+  IF r.status <> 'pending' THEN RAISE EXCEPTION 'Only pending requests can be approved'; END IF;
+
+  INSERT INTO institutions(name, domain, plan)
+  VALUES (trim(r.institution_name), nullif(trim(r.domain), ''), 'institution')
+  RETURNING * INTO new_institution;
+
+  INSERT INTO workspaces(type, institution_id)
+  VALUES ('institution', new_institution.id)
+  RETURNING * INTO new_workspace;
+
+  INSERT INTO workspace_members(workspace_id, user_id, role)
+  VALUES (new_workspace.id, r.requester_id, 'admin')
+  ON CONFLICT (workspace_id, user_id) DO UPDATE SET role = EXCLUDED.role;
+
+  UPDATE profiles
+  SET workspace_id = new_workspace.id,
+      role = 'admin'
+  WHERE id = r.requester_id;
+
+  UPDATE institution_setup_requests
+  SET status = 'approved'
+  WHERE id = r.id;
+
+  RETURN new_institution;
+END; $$;
+GRANT EXECUTE ON FUNCTION approve_institution_setup(uuid) TO authenticated;
+
+CREATE OR REPLACE FUNCTION reject_institution_setup(p_request_id uuid)
+RETURNS institution_setup_requests LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
+DECLARE r institution_setup_requests;
+BEGIN
+  SELECT * INTO r FROM institution_setup_requests WHERE id = p_request_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Institution setup request not found'; END IF;
+  UPDATE institution_setup_requests
+  SET status = 'rejected'
+  WHERE id = r.id
+  RETURNING * INTO r;
+  RETURN r;
+END; $$;
+GRANT EXECUTE ON FUNCTION reject_institution_setup(uuid) TO authenticated;
+
+DROP POLICY IF EXISTS institution_setup_requests_select ON institution_setup_requests;
+CREATE POLICY institution_setup_requests_select ON institution_setup_requests FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS institution_setup_requests_update ON institution_setup_requests;
+CREATE POLICY institution_setup_requests_update ON institution_setup_requests FOR UPDATE TO authenticated USING (true) WITH CHECK (status IN ('pending','reviewed','approved','rejected'));
+
 /* Backfill explicit workspace memberships for existing accounts without changing their active workspace. */
 INSERT INTO workspace_members(workspace_id,user_id,role)
 SELECT p.workspace_id,p.id,CASE WHEN p.role='admin' THEN 'admin' ELSE 'member' END

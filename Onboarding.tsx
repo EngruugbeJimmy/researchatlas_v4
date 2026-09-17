@@ -10,10 +10,46 @@ export default function Onboarding() {
   const email=session?.user?.email ?? '';
   const domain=email.split('@')[1] ?? '';
   const createPersonal=async()=>{ if(!session?.user) return; setBusy(true); setError(null); try {
-    const {data,error:we}=await supabase.from('workspaces').insert({type:'personal',owner_id:session.user.id}).select().single(); if(we) throw we;
-    const {error:pe}=await supabase.from('profiles').insert({id:session.user.id,workspace_id:data.id,email,full_name:fullName||null,role:'researcher'}); if(pe) throw pe;
-    await supabase.from('workspace_members').insert({workspace_id:data.id,user_id:session.user.id,role:'admin'}); await refreshProfile();
-  } catch(e){setError(e instanceof Error?e.message:'Unable to create personal workspace.');} finally{setBusy(false);} };
+    const userId = session.user.id;
+    const { data: workspaceData, error: workspaceError } = await supabase
+      .from('workspaces')
+      .insert({ type: 'personal', owner_id: userId })
+      .select('id')
+      .single();
+
+    if (workspaceError) throw workspaceError;
+
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .upsert({
+        id: userId,
+        workspace_id: workspaceData.id,
+        email,
+        full_name: fullName || null,
+        role: 'admin',
+      }, { onConflict: 'id' })
+      .select()
+      .single();
+
+    if (profileError) throw profileError;
+
+    const { error: membershipError } = await supabase
+      .from('workspace_members')
+      .upsert({
+        workspace_id: workspaceData.id,
+        user_id: userId,
+        role: 'admin',
+      }, { onConflict: 'workspace_id,user_id' })
+      .select()
+      .single();
+
+    if (membershipError) throw membershipError;
+
+    await refreshProfile();
+  } catch(e){
+    const msg = e instanceof Error ? e.message : 'Unable to create personal workspace.';
+    setError(msg.includes('violates row-level security') ? 'Workspace creation is blocked by security rules. Please sign out and sign back in, then try again.' : msg);
+  } finally{setBusy(false);} };
   const requestInstitution=async(e:React.FormEvent)=>{e.preventDefault(); if(!institutionName.trim()) return; setBusy(true); setError(null); try {
     const {error:rpcError}=await supabase.rpc('request_institution_setup',{p_institution_name:institutionName.trim(),p_domain:domain||null,p_message:message||null,p_full_name:fullName||null});
     if(rpcError) throw rpcError; setStep('choose'); setMessage('Your institutional setup request has been recorded. An administrator can establish the workspace and invite you.');

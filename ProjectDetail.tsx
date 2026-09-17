@@ -47,6 +47,9 @@ export default function ProjectDetail({
   const [loading, setLoading] = useState(true);
   const [showAddTask, setShowAddTask] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [showAddMember, setShowAddMember] = useState(false);
+  const [newMemberEmail, setNewMemberEmail] = useState('');
+  const [newMemberRole, setNewMemberRole] = useState<'researcher' | 'supervisor' | 'reviewer'>('supervisor');
   const [newComment, setNewComment] = useState('');
   const [reviewNote, setReviewNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -170,6 +173,48 @@ export default function ProjectDetail({
     });
     setNewComment('');
     await loadData();
+  };
+
+  const addProjectMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMemberEmail.trim()) {
+      setError('Enter an email to assign a project member.');
+      return;
+    }
+
+    setError(null);
+    setSubmitting(true);
+
+    try {
+      const { data: memberProfile, error: lookupError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', newMemberEmail.trim())
+        .maybeSingle();
+
+      if (lookupError) throw lookupError;
+      if (!memberProfile) {
+        throw new Error('No user with that email exists in ResearchAtlas yet.');
+      }
+
+      const { error: insertError } = await supabase.from('project_members').upsert({
+        project_id: projectId,
+        user_id: memberProfile.id,
+        role: newMemberRole,
+      }, { onConflict: 'project_id,user_id' });
+
+      if (insertError) throw insertError;
+
+      setNewMemberEmail('');
+      setNewMemberRole('supervisor');
+      setShowAddMember(false);
+      await loadData();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to assign project member.';
+      setError(message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (loading) return <div className="page-loading">Loading project...</div>;
@@ -381,7 +426,30 @@ export default function ProjectDetail({
           </div>
 
           <div className="sidebar-card">
-            <h3><FileText size={18} /> Project Members</h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
+              <h3><FileText size={18} /> Project Members</h3>
+              <button className="button button-outline button-small" onClick={() => setShowAddMember(!showAddMember)}>
+                <Plus size={12} /> Add
+              </button>
+            </div>
+
+            {showAddMember && (
+              <form onSubmit={addProjectMember} className="inline-form" style={{ marginTop: '0.75rem' }}>
+                <input
+                  type="email"
+                  value={newMemberEmail}
+                  onChange={(e) => setNewMemberEmail(e.target.value)}
+                  placeholder="member@email.com"
+                />
+                <select value={newMemberRole} onChange={(e) => setNewMemberRole(e.target.value as 'researcher' | 'supervisor' | 'reviewer')}>
+                  <option value="supervisor">Supervisor</option>
+                  <option value="reviewer">Reviewer</option>
+                  <option value="researcher">Researcher</option>
+                </select>
+                <button type="submit" className="button button-solid button-small" disabled={submitting}>Add</button>
+              </form>
+            )}
+
             <div className="member-list">
               {members.length === 0 ? (
                 <p className="empty-hint">No additional members.</p>

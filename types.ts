@@ -50,6 +50,18 @@ export interface Institution {
   created_at: string;
 }
 
+export interface InstitutionSetupRequest {
+  id: string;
+  requester_id: string;
+  institution_name: string;
+  domain: string | null;
+  full_name: string | null;
+  message: string | null;
+  status: 'pending' | 'reviewed' | 'approved' | 'rejected';
+  created_at: string;
+  requester_email?: string | null;
+}
+
 export interface WorkspaceMember { id: string; workspace_id: string; user_id: string; role: 'member' | 'admin'; created_at: string; }
 
 export interface Workspace {

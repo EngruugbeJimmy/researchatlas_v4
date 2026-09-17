@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth';
-import type { Institution, Faculty, Department, ResearchGroup, Profile } from '@/lib/types';
-import { Building2, Plus, Users, X, GraduationCap, Layers } from 'lucide-react';
+import type { Institution, Faculty, Department, Profile, InstitutionSetupRequest } from '@/lib/types';
+import { Building2, Plus, Users, X, GraduationCap, Layers, Check, Ban } from 'lucide-react';
 
 export default function InstitutionAdmin() {
   const { workspace } = useAuth();
   const [institution, setInstitution] = useState<Institution | null>(null);
   const [faculties, setFaculties] = useState<Faculty[]>([]);
   const [members, setMembers] = useState<Profile[]>([]);
+  const [requests, setRequests] = useState<InstitutionSetupRequest[]>([]);
   const [loading, setLoading] = useState(true);
+  const [requestMessage, setRequestMessage] = useState<string | null>(null);
   const [showAddFaculty, setShowAddFaculty] = useState(false);
   const [newFacultyName, setNewFacultyName] = useState('');
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -49,6 +51,26 @@ export default function InstitutionAdmin() {
       .order('full_name');
     setMembers((profs ?? []) as Profile[]);
 
+    const { data: requestRows } = await supabase
+      .from('institution_setup_requests')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    const requestIds = (requestRows ?? []).map((r) => r.requester_id);
+    const { data: profileRows } = requestIds.length
+      ? await supabase.from('profiles').select('id,email').in('id', requestIds)
+      : { data: [] };
+
+    const emailMap = new Map<string, string>();
+    (profileRows ?? []).forEach((profile) => {
+      emailMap.set(profile.id, profile.email);
+    });
+
+    setRequests((requestRows ?? []).map((request) => ({
+      ...request,
+      requester_email: emailMap.get(request.requester_id) ?? null,
+    })) as InstitutionSetupRequest[]);
+
     setLoading(false);
   };
 
@@ -80,6 +102,31 @@ export default function InstitutionAdmin() {
     await load();
   };
 
+  const handleRequestDecision = async (requestId: string, decision: 'approved' | 'rejected') => {
+    setRequestMessage(null);
+
+    try {
+      if (decision === 'approved') {
+        const { error } = await supabase.rpc('approve_institution_setup', { p_request_id: requestId });
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('institution_setup_requests')
+          .update({ status: 'rejected' })
+          .eq('id', requestId);
+        if (error) throw error;
+      }
+
+      await load();
+      setRequestMessage(decision === 'approved'
+        ? 'Institution request approved. The requester was assigned a new institution workspace.'
+        : 'Institution request rejected.');
+    } catch (error) {
+      const text = error instanceof Error ? error.message : 'Unable to update the request.';
+      setRequestMessage(text);
+    }
+  };
+
   if (loading) return <div className="page-loading">Loading institution...</div>;
 
   return (
@@ -87,12 +134,16 @@ export default function InstitutionAdmin() {
       <div className="page-header">
         <div>
           <h1>{institution?.name ?? 'Institution'}</h1>
-          <p className="page-subtitle">Manage faculties, departments, and members.</p>
+          <p className="page-subtitle">Manage faculties, departments, members, and setup requests.</p>
         </div>
         <button className="button button-solid" onClick={() => setShowAddFaculty(true)}>
           <Plus size={16} /> Add faculty
         </button>
       </div>
+
+      {requestMessage && (
+        <div className="scholarly-note" style={{ marginBottom: '1rem' }}>{requestMessage}</div>
+      )}
 
       <div className="institution-grid">
         <div className="institution-section">
@@ -158,6 +209,44 @@ export default function InstitutionAdmin() {
             </div>
           )}
         </div>
+      </div>
+
+      <div className="institution-section" style={{ marginTop: '1.5rem' }}>
+        <h3><Building2 size={18} /> Institution setup requests</h3>
+        {requests.length === 0 ? (
+          <p className="empty-hint">No institution setup requests.</p>
+        ) : (
+          <div className="request-list">
+            {requests.map((request) => (
+              <div key={request.id} className="request-item" style={{ border: '1px solid #dfe7f1', borderRadius: '12px', padding: '1rem', marginTop: '0.75rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div>
+                    <strong>{request.institution_name}</strong>
+                    <div style={{ color: '#5b6b7d', fontSize: '0.92rem' }}>
+                      {request.requester_email ?? 'Unknown requester'} • {new Date(request.created_at).toLocaleDateString()}
+                    </div>
+                  </div>
+                  <span className={`role-badge ${request.status}`}>{request.status}</span>
+                </div>
+
+                {request.full_name && <p style={{ marginTop: '0.75rem', marginBottom: '0.15rem' }}><strong>Contact:</strong> {request.full_name}</p>}
+                {request.domain && <p style={{ margin: '0.15rem 0' }}><strong>Domain:</strong> {request.domain}</p>}
+                {request.message && <p style={{ margin: '0.15rem 0' }}><strong>Message:</strong> {request.message}</p>}
+
+                {request.status === 'pending' && (
+                  <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.9rem', flexWrap: 'wrap' }}>
+                    <button className="button button-solid button-small" onClick={() => handleRequestDecision(request.id, 'approved')}>
+                      <Check size={14} /> Approve
+                    </button>
+                    <button className="button button-outline button-small" onClick={() => handleRequestDecision(request.id, 'rejected')}>
+                      <Ban size={14} /> Reject
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {showAddFaculty && (

@@ -70,8 +70,13 @@ function AppContent() {
     );
   }
 
-  if (!profile || !workspace) {
-    return <Onboarding />;
+  if (session && (!profile || !workspace)) {
+    return (
+      <LandingPage
+        onGetStarted={() => { setAuthMode('signup'); setShowAuth(true); }}
+        onSignIn={() => { setAuthMode('signin'); setShowAuth(true); }}
+      />
+    );
   }
 
   return <AppShell />;
