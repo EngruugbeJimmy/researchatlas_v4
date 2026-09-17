@@ -12,6 +12,7 @@ interface AuthContextValue {
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   resetPassword: (email: string) => Promise<{ error: string | null }>;
   signInWithGoogle: () => Promise<{ error: string | null }>;
+  updatePassword: (newPassword: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -105,9 +106,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { error: 'Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.' };
     }
 
-    const redirectTo =
+    const baseUrl =
       import.meta.env.VITE_APP_URL ||
       (typeof window !== 'undefined' ? window.location.origin : 'https://www.researchatlas.tech');
+    const redirectTo = new URL('/reset-password', baseUrl).toString();
 
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo,
@@ -132,6 +134,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
     });
 
+    if (error) {
+      const lowerMessage = error.message.toLowerCase();
+      const isProviderDisabled = lowerMessage.includes('provider is not enabled') || lowerMessage.includes('unsupported provider');
+
+      return {
+        error: isProviderDisabled
+          ? 'Google sign-in is not enabled in Supabase yet. Open Supabase Dashboard → Authentication → Providers → Google, enable it, and add the OAuth client ID/secret before trying again.'
+          : error.message,
+      };
+    }
+
+    return { error: null };
+  };
+
+  const updatePassword = async (newPassword: string) => {
+    if (!isSupabaseConfigured) {
+      return { error: 'Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.' };
+    }
+
+    if (!newPassword || newPassword.length < 6) {
+      return { error: 'Password must be at least 6 characters long.' };
+    }
+
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
     return { error: error?.message ?? null };
   };
 
@@ -148,7 +174,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ session, profile, workspace, loading, signUp, signIn, resetPassword, signInWithGoogle, signOut, refreshProfile }}>
+    <AuthContext.Provider value={{ session, profile, workspace, loading, signUp, signIn, resetPassword, signInWithGoogle, updatePassword, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

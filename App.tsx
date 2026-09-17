@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import LandingPage from '@/components/LandingPage';
 import AuthScreen from '@/components/AuthScreen';
@@ -6,10 +6,111 @@ import Onboarding from '@/components/Onboarding';
 import AppShell from '@/components/AppShell';
 import { isSupabaseConfigured } from './supabase';
 
+function ResetPasswordScreen() {
+  const { updatePassword, signOut } = useAuth();
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setMessage(null);
+
+    if (!password || password.length < 6) {
+      setError('Password must be at least 6 characters long.');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+
+    setSubmitting(true);
+    const result = await updatePassword(password);
+    setSubmitting(false);
+
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
+
+    await signOut();
+    setMessage('Password updated successfully. Please sign in with your new password.');
+    setPassword('');
+    setConfirmPassword('');
+    setTimeout(() => {
+      window.location.href = '/';
+    }, 1200);
+  };
+
+  return (
+    <div className="auth-screen">
+      <div className="auth-card">
+        <div className="auth-brand">
+          <span className="brand-mark" aria-hidden="true"><span /><span /><span /></span>
+          <span>ResearchAtlas</span>
+        </div>
+        <h1>Set a new password</h1>
+        <p className="auth-subtitle">Choose a new password and sign in again.</p>
+
+        <form onSubmit={handleSubmit} className="auth-form">
+          <label className="auth-field">
+            <span>New password</span>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={6}
+              placeholder="At least 6 characters"
+            />
+          </label>
+
+          <label className="auth-field">
+            <span>Confirm password</span>
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+              minLength={6}
+              placeholder="Re-enter your password"
+            />
+          </label>
+
+          {error && <p className="auth-error">{error}</p>}
+          {message && <p className="auth-success" style={{ color: '#34d399', marginTop: '0.75rem', marginBottom: '0.5rem' }}>{message}</p>}
+
+          <button type="submit" className="button button-solid auth-submit" disabled={submitting}>
+            {submitting ? 'Updating...' : 'Update password'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function AppContent() {
   const { session, profile, workspace, loading } = useAuth();
   const [showAuth, setShowAuth] = useState(false);
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signup');
+  const [currentPath, setCurrentPath] = useState(typeof window !== 'undefined' ? window.location.pathname : '/');
+
+  useEffect(() => {
+    const syncPath = () => setCurrentPath(window.location.pathname);
+    window.addEventListener('popstate', syncPath);
+    return () => window.removeEventListener('popstate', syncPath);
+  }, []);
+
+  const isPasswordResetRoute = currentPath === '/reset-password' || new URLSearchParams(window.location.search).get('type') === 'recovery';
+
+  if (isPasswordResetRoute) {
+    return <ResetPasswordScreen />;
+  }
 
   if (!isSupabaseConfigured) {
     if (showAuth) {
